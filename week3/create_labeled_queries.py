@@ -4,6 +4,7 @@ import xml.etree.ElementTree as ET
 import pandas as pd
 import numpy as np
 import csv
+import time
 
 # Useful if you want to perform stemming.
 import nltk
@@ -24,6 +25,7 @@ output_file_name = args.output
 
 if args.min_queries:
     min_queries = int(args.min_queries)
+min_queries = 1000
 
 # The root category, named Best Buy with id cat00000, doesn't have a parent.
 root_category_id = 'cat00000'
@@ -47,10 +49,43 @@ parents_df = pd.DataFrame(list(zip(categories, parents)), columns =['category', 
 # Read the training data into pandas, only keeping queries with non-root categories in our category tree.
 df = pd.read_csv(queries_file_name)[['category', 'query']]
 df = df[df['category'].isin(categories)]
+# print(df)
+# df = df[0:10000]
 
 # IMPLEMENT ME: Convert queries to lowercase, and optionally implement other normalization, like stemming.
+df['query'] = df['query'].str.lower()
+df['query'] = df['query'].apply(lambda q: stemmer.stem(q))
+
+print(df)
+
 
 # IMPLEMENT ME: Roll up categories to ancestors to satisfy the minimum number of queries per category.
+
+category_count = df['category'].value_counts().reset_index()
+category_count.columns=['category','count']
+print(category_count)
+# print(parents_df[parents_df['category']=='cat02015']['parent'].iloc[0])
+# print(category_count[category_count['category']=='cat02015']['count'].iloc[0])
+
+# print(category_count['count'] < min_queries)
+
+df_with_cat_count_parent = df.merge(category_count, on='category', how='left').merge(parents_df, on='category', how='left')
+print(df_with_cat_count_parent)
+
+start = time.time()
+while any(category_count['count'] < min_queries):
+    df_with_cat_count_parent.loc[df_with_cat_count_parent['count']< min_queries,'category'] =\
+        df_with_cat_count_parent['parent']
+    category_count = df_with_cat_count_parent['category'].value_counts().reset_index()
+    category_count.columns=['category','count']
+    df = df_with_cat_count_parent[['query','category']]
+    df = df[df['category'].isin(categories)]
+    df_with_cat_count_parent = df.merge(category_count, on='category', how='left').merge(parents_df, on='category',
+                                                                                         how='left')
+    print(sum(category_count['count'] < min_queries))
+
+print(time.time() -start)
+print(category_count)
 
 # Create labels in fastText format.
 df['label'] = '__label__' + df['category']

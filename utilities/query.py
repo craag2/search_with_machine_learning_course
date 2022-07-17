@@ -11,6 +11,9 @@ from urllib.parse import urljoin
 import pandas as pd
 import fileinput
 import logging
+import fasttext
+import nltk
+stemmer = nltk.stem.PorterStemmer()
 
 
 logger = logging.getLogger(__name__)
@@ -241,11 +244,17 @@ if __name__ == "__main__":
     index_name = args.index
     query_prompt = "\nEnter your query (type 'Exit' to exit or hit ctrl-c):"
     print(query_prompt)
+
+    query_cat_classifier = fasttext.load_model("/workspace/datasets/fasttext/model2.bin")
     for line in fileinput.input():
         query = line.rstrip()
         if query == "Exit":
             break
         #### W3: classify the query
+
+        normalized_query = stemmer.stem(query.lower())
+
+        print(query_cat_classifier.predict(normalized_query))
         search(client=opensearch, user_query=query, index=index_name, synonyms=args.synonyms)
 
         print(query_prompt)
