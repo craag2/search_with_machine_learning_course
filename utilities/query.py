@@ -52,7 +52,13 @@ def create_prior_queries(doc_ids, doc_id_weights,
 
 
 # Hardcoded query here.  Better to use search templates or other query config.
-def create_query(user_query, click_prior_query, filters, sort="_score", sortDir="desc", size=10, source=None, synonyms=False):
+def create_query(user_query, click_prior_query, filters, sort="_score", sortDir="desc", size=10, source=None, synonyms=False, predicted_cat=None):
+    if predicted_cat is not None:
+        category = predicted_cat.removeprefix('__label__')
+        filters.append({'term': {
+            'categoryPathIds': category,
+        }})
+
     name_field = "name" if not synonyms else "name.synonyms"
     query_obj = {
         'size': size,
@@ -190,8 +196,8 @@ def create_query(user_query, click_prior_query, filters, sort="_score", sortDir=
     return query_obj
 
 
-def search(client, user_query, index="bbuy_products", sort=None, sortDir="desc", synonyms=False):
-    query_obj = create_query(user_query, click_prior_query=None, filters=None, sort=sort, sortDir=sortDir, source=["name", "shortDescription"], synonyms=synonyms)
+def search(client, user_query, index="bbuy_products", sort=None, sortDir="desc", synonyms=False, predicted_cat=None):
+    query_obj = create_query(user_query, click_prior_query=None, filters=[], sort=sort, sortDir=sortDir, source=["name", "shortDescription"], synonyms=synonyms, predicted_cat=predicted_cat)
     logging.info(query_obj)
     response = client.search(query_obj, index=index)
     if response and response['hits']['hits'] and len(response['hits']['hits']) > 0:
@@ -245,7 +251,7 @@ if __name__ == "__main__":
     query_prompt = "\nEnter your query (type 'Exit' to exit or hit ctrl-c):"
     print(query_prompt)
 
-    query_cat_classifier = fasttext.load_model("/workspace/datasets/fasttext/model2.bin")
+    query_cat_classifier = fasttext.load_model("/workspace/datasets/fasttext/query_cat_classifier_model2.bin")
     for line in fileinput.input():
         query = line.rstrip()
         if query == "Exit":
@@ -253,9 +259,15 @@ if __name__ == "__main__":
         #### W3: classify the query
 
         normalized_query = stemmer.stem(query.lower())
+        output = query_cat_classifier.predict(normalized_query)
 
-        print(query_cat_classifier.predict(normalized_query))
-        search(client=opensearch, user_query=query, index=index_name, synonyms=args.synonyms)
+        predicted_cat = output[0][0]
+        print(predicted_cat)
+        prob = output[1][0]
+        print(prob)
+        if prob < 0.5:
+            predicted_cat = None
+        search(client=opensearch, user_query=query, index=index_name, synonyms=args.synonyms, sort="_score", predicted_cat=predicted_cat)
 
         print(query_prompt)
 
